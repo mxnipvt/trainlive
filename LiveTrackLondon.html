@@ -1,0 +1,1331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LiveTrack London</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css"/>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@300;400;500&family=Bebas+Neue&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#05080f;
+  --bg2:#080d1a;
+  --panel:rgba(6,11,24,0.92);
+  --panel2:rgba(8,14,28,0.88);
+  --amber:#f59e0b;
+  --amber2:#fbbf24;
+  --amber3:#fde68a;
+  --cyan:#22d3ee;
+  --cyan2:#06b6d4;
+  --red:#ef4444;
+  --green:#10b981;
+  --blue:#3b82f6;
+  --border:rgba(245,158,11,0.18);
+  --border2:rgba(245,158,11,0.35);
+  --text:#e8e0cc;
+  --text2:#a09070;
+  --text3:#60503a;
+  --glow-amber:0 0 20px rgba(245,158,11,0.4);
+  --glow-cyan:0 0 20px rgba(34,211,238,0.3);
+  --ff-display:'Bebas Neue',sans-serif;
+  --ff-ui:'Rajdhani',sans-serif;
+  --ff-mono:'JetBrains Mono',monospace;
+}
+
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--ff-ui);cursor:none}
+
+/* CUSTOM CURSOR */
+#cursor{position:fixed;width:14px;height:14px;border-radius:50%;background:var(--amber);pointer-events:none;z-index:99999;transform:translate(-50%,-50%);transition:width 0.15s,height 0.15s,background 0.15s;mix-blend-mode:difference}
+#cursor-ring{position:fixed;width:36px;height:36px;border-radius:50%;border:1px solid var(--amber);pointer-events:none;z-index:99998;transform:translate(-50%,-50%);transition:all 0.08s linear;opacity:0.6}
+body:has(button:hover) #cursor{width:22px;height:22px;background:var(--cyan)}
+body:has(input:focus) #cursor{background:var(--cyan);width:4px;height:20px;border-radius:2px}
+
+/* SCAN LINE OVERLAY */
+body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.08) 2px,rgba(0,0,0,0.08) 4px);pointer-events:none;z-index:9999;animation:scanMove 8s linear infinite}
+@keyframes scanMove{0%{background-position:0 0}100%{background-position:0 100px}}
+
+/* NOISE TEXTURE */
+body::after{content:'';position:fixed;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");pointer-events:none;z-index:9998;opacity:0.6}
+
+/* KEYFRAMES */
+@keyframes fadeUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
+@keyframes slideLeft{from{opacity:0;transform:translateX(-40px)}to{opacity:1;transform:translateX(0)}}
+@keyframes slideRight{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
+@keyframes glowPulse{0%,100%{box-shadow:0 0 10px rgba(245,158,11,0.2)}50%{box-shadow:0 0 30px rgba(245,158,11,0.5),0 0 60px rgba(245,158,11,0.2)}}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.3}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes popIn{0%{transform:scale(0) translateY(20px);opacity:0}70%{transform:scale(1.12);opacity:1}100%{transform:scale(1);opacity:1}}
+@keyframes ticker{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+@keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.5);opacity:0.5}}
+@keyframes lineGrow{from{width:0}to{width:100%}}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+@keyframes cornerBlink{0%,100%{opacity:1}50%{opacity:0.3}}
+
+/* ═══════════════════════════════ LOGIN PAGE ═══════════════════════════════ */
+#loginPage{
+  position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;
+  background:var(--bg);overflow:hidden;
+}
+.login-bg-grid{
+  position:absolute;inset:0;
+  background-image:linear-gradient(rgba(245,158,11,0.05) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(245,158,11,0.05) 1px,transparent 1px);
+  background-size:60px 60px;
+  animation:fadeUp 1s ease both;
+}
+.login-bg-orb{position:absolute;border-radius:50%;pointer-events:none;filter:blur(120px)}
+.login-card{
+  position:relative;z-index:5;
+  width:460px;padding:50px 44px;
+  background:var(--panel);
+  border:1px solid var(--border2);
+  border-radius:4px;
+  box-shadow:0 40px 80px rgba(0,0,0,0.8),inset 0 1px 0 rgba(245,158,11,0.1);
+  animation:fadeUp 0.7s 0.2s cubic-bezier(0.22,1,0.36,1) both;
+}
+/* Corner brackets */
+.login-card::before,.login-card::after{content:'';position:absolute;width:20px;height:20px;border-color:var(--amber);border-style:solid;animation:cornerBlink 2s infinite}
+.login-card::before{top:-1px;left:-1px;border-width:2px 0 0 2px}
+.login-card::after{bottom:-1px;right:-1px;border-width:0 2px 2px 0}
+
+.login-logo{margin-bottom:32px}
+.login-logo-icon{width:52px;height:52px;background:linear-gradient(135deg,var(--amber),#b45309);border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:24px;margin-bottom:14px;box-shadow:var(--glow-amber);animation:float 3s ease infinite}
+.login-wordmark{font-family:var(--ff-display);font-size:42px;letter-spacing:3px;color:var(--amber);line-height:1}
+.login-sub{font-family:var(--ff-mono);font-size:11px;color:var(--text3);letter-spacing:3px;text-transform:uppercase;margin-top:4px}
+
+.login-mode{display:flex;gap:0;margin-bottom:28px;border:1px solid var(--border2);border-radius:3px;overflow:hidden}
+.mode-btn{flex:1;padding:11px;border:none;background:transparent;color:var(--text2);font-family:var(--ff-ui);font-size:14px;font-weight:600;cursor:pointer;letter-spacing:1px;transition:all 0.2s;text-transform:uppercase}
+.mode-btn.active{background:var(--amber);color:#000;font-weight:700}
+
+.field-wrap{position:relative;margin-bottom:16px}
+.field-label{font-family:var(--ff-mono);font-size:10px;letter-spacing:2px;color:var(--text3);text-transform:uppercase;margin-bottom:7px;display:block}
+.field-input{
+  width:100%;padding:13px 16px 13px 44px;
+  background:rgba(245,158,11,0.04);
+  border:1px solid var(--border);
+  border-radius:3px;color:var(--text);
+  font-family:var(--ff-ui);font-size:15px;font-weight:500;
+  outline:none;transition:all 0.2s;
+  letter-spacing:0.5px;
+}
+.field-input:focus{border-color:var(--amber);background:rgba(245,158,11,0.08);box-shadow:0 0 0 3px rgba(245,158,11,0.1)}
+.field-input::placeholder{color:var(--text3)}
+.field-icon{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--text3);font-size:15px;margin-top:13px}
+
+.btn-login{
+  width:100%;padding:15px;margin-top:8px;
+  background:linear-gradient(135deg,var(--amber),#b45309);
+  border:none;border-radius:3px;
+  color:#000;font-family:var(--ff-display);font-size:22px;letter-spacing:3px;
+  cursor:pointer;transition:all 0.2s;
+  box-shadow:0 6px 24px rgba(245,158,11,0.3);
+  position:relative;overflow:hidden;
+}
+.btn-login::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,0.15),transparent);opacity:0;transition:opacity 0.2s}
+.btn-login:hover{transform:translateY(-2px);box-shadow:0 12px 36px rgba(245,158,11,0.45)}
+.btn-login:hover::before{opacity:1}
+.btn-login:active{transform:translateY(0)}
+
+.login-divider{display:flex;align-items:center;gap:14px;margin:20px 0;color:var(--text3);font-size:12px;font-family:var(--ff-mono);letter-spacing:1px}
+.login-divider::before,.login-divider::after{content:'';flex:1;height:1px;background:var(--border)}
+
+.social-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.btn-social{
+  padding:11px;background:transparent;border:1px solid var(--border);border-radius:3px;
+  color:var(--text2);font-family:var(--ff-ui);font-size:13px;font-weight:600;
+  cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:7px;
+  letter-spacing:0.5px;
+}
+.btn-social:hover{border-color:var(--amber2);color:var(--amber2);background:rgba(245,158,11,0.06)}
+
+.login-footer{margin-top:22px;text-align:center;font-family:var(--ff-mono);font-size:11px;color:var(--text3)}
+.login-footer a{color:var(--amber);text-decoration:none;cursor:pointer}
+.login-footer a:hover{color:var(--amber2)}
+
+/* ═══════════════════════════════ MAIN APP ═══════════════════════════════ */
+#app{position:fixed;inset:0;display:none;flex-direction:column}
+
+/* MAP */
+#map{position:absolute;inset:0;z-index:0}
+.leaflet-tile{filter:brightness(0.42) saturate(0.5) hue-rotate(180deg) invert(0.05)}
+.leaflet-container{background:#05080f}
+.leaflet-routing-container{display:none}
+
+/* TOP BAR */
+.topbar{
+  position:absolute;top:0;left:0;right:0;z-index:500;
+  display:flex;align-items:center;gap:12px;
+  padding:16px 20px;
+  background:linear-gradient(to bottom,rgba(5,8,15,0.95) 0%,transparent 100%);
+  pointer-events:none;
+}
+.topbar>*{pointer-events:all}
+
+.brand{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.brand-icon{width:38px;height:38px;background:linear-gradient(135deg,var(--amber),#b45309);border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:var(--glow-amber)}
+.brand-name{font-family:var(--ff-display);font-size:28px;letter-spacing:3px;color:var(--amber)}
+
+.search-wrap{flex:1;max-width:500px;position:relative}
+.main-search{
+  width:100%;padding:13px 46px 13px 16px;
+  background:var(--panel);
+  border:1px solid var(--border);border-radius:3px;
+  color:var(--text);font-family:var(--ff-ui);font-size:15px;font-weight:500;
+  outline:none;transition:all 0.2s;
+  backdrop-filter:blur(20px);
+  letter-spacing:0.5px;
+}
+.main-search:focus{border-color:var(--amber);box-shadow:0 0 0 2px rgba(245,158,11,0.15),0 8px 30px rgba(0,0,0,0.5)}
+.main-search::placeholder{color:var(--text3)}
+.search-go{
+  position:absolute;right:10px;top:50%;transform:translateY(-50%);
+  background:var(--amber);border:none;border-radius:2px;padding:5px 10px;
+  color:#000;font-family:var(--ff-mono);font-size:11px;font-weight:500;cursor:pointer;letter-spacing:1px;
+}
+
+.topbar-right{display:flex;align-items:center;gap:8px;margin-left:auto}
+
+.top-btn{
+  width:40px;height:40px;background:var(--panel);border:1px solid var(--border);border-radius:3px;
+  color:var(--text2);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  transition:all 0.2s;backdrop-filter:blur(10px);
+}
+.top-btn:hover{border-color:var(--amber);color:var(--amber);box-shadow:var(--glow-amber)}
+.top-btn.active{border-color:var(--amber);background:rgba(245,158,11,0.1);color:var(--amber)}
+
+.avatar{
+  width:40px;height:40px;background:linear-gradient(135deg,var(--amber),#b45309);border-radius:3px;
+  display:flex;align-items:center;justify-content:center;font-family:var(--ff-display);font-size:17px;
+  color:#000;cursor:pointer;letter-spacing:1px;box-shadow:var(--glow-amber);flex-shrink:0;
+}
+
+/* AUTOCOMPLETE */
+.autocomplete-box{
+  position:absolute;top:calc(100% + 6px);left:0;right:0;
+  background:var(--panel);border:1px solid var(--border2);border-radius:3px;
+  backdrop-filter:blur(30px);overflow:hidden;
+  box-shadow:0 20px 50px rgba(0,0,0,0.8);z-index:600;display:none;
+}
+.ac-item{
+  display:flex;align-items:center;gap:12px;padding:12px 16px;
+  cursor:pointer;border-bottom:1px solid rgba(245,158,11,0.06);
+  transition:all 0.15s;
+}
+.ac-item:hover,.ac-item.hovered{background:rgba(245,158,11,0.08);border-left:2px solid var(--amber)}
+.ac-icon{font-size:18px;flex-shrink:0;width:26px;text-align:center}
+.ac-name{font-size:14px;font-weight:600;color:var(--text)}
+.ac-meta{font-size:11px;color:var(--text3);font-family:var(--ff-mono);margin-top:2px}
+
+/* ═══════ LEFT PANEL ═══════ */
+.left-panel{
+  position:absolute;left:20px;top:80px;bottom:20px;
+  width:330px;z-index:400;display:flex;flex-direction:column;gap:10px;
+  animation:slideLeft 0.5s cubic-bezier(0.22,1,0.36,1) both;
+  pointer-events:none;
+}
+.left-panel>*{pointer-events:all}
+
+.panel-card{
+  background:var(--panel);border:1px solid var(--border);border-radius:4px;
+  padding:18px;backdrop-filter:blur(24px);
+  box-shadow:0 12px 40px rgba(0,0,0,0.6),inset 0 1px 0 rgba(245,158,11,0.06);
+  position:relative;overflow:hidden;
+}
+.panel-card::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--amber),transparent);opacity:0.4}
+
+.panel-title{
+  font-family:var(--ff-display);font-size:18px;letter-spacing:2px;color:var(--amber);
+  display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;
+}
+.live-badge{
+  display:flex;align-items:center;gap:5px;
+  font-family:var(--ff-mono);font-size:10px;color:var(--red);letter-spacing:1px;font-weight:500;
+}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--red);animation:blink 1s infinite}
+
+/* CATEGORY TABS */
+.cat-tabs{display:flex;gap:0;border:1px solid var(--border);border-radius:3px;overflow:hidden;margin-bottom:14px}
+.cat-tab{flex:1;padding:8px 4px;border:none;background:transparent;color:var(--text3);font-family:var(--ff-mono);font-size:9px;cursor:pointer;transition:all 0.2s;letter-spacing:1px;text-transform:uppercase;text-align:center}
+.cat-tab.active{background:var(--amber);color:#000;font-weight:700}
+
+/* CATEGORY ICONS */
+.cat-icons{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:14px}
+.cat-icon-btn{
+  padding:10px 6px;background:rgba(245,158,11,0.04);border:1px solid var(--border);border-radius:3px;
+  cursor:pointer;text-align:center;transition:all 0.2s;
+}
+.cat-icon-btn:hover,.cat-icon-btn.active{background:rgba(245,158,11,0.12);border-color:var(--amber2)}
+.cat-icon-btn .icon{font-size:18px;display:block;margin-bottom:4px}
+.cat-icon-btn .lbl{font-family:var(--ff-mono);font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px}
+.cat-icon-btn.active .lbl{color:var(--amber)}
+
+/* DESTINATION LIST */
+.dest-list{max-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:4px}
+.dest-list::-webkit-scrollbar{width:2px}
+.dest-list::-webkit-scrollbar-thumb{background:var(--amber);border-radius:2px}
+.dest-item{
+  display:flex;align-items:center;gap:10px;padding:9px 12px;
+  border:1px solid transparent;border-radius:3px;cursor:pointer;transition:all 0.18s;
+}
+.dest-item:hover{background:rgba(245,158,11,0.08);border-color:rgba(245,158,11,0.2);transform:translateX(4px)}
+.dest-item .emoji{font-size:16px;flex-shrink:0;width:22px}
+.dest-item .dname{font-size:13px;font-weight:600;color:var(--text);flex:1}
+.dest-item .dist{font-family:var(--ff-mono);font-size:10px;color:var(--amber)}
+
+/* ROUTE INFO */
+.route-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px}
+.rstat{background:rgba(245,158,11,0.05);border:1px solid var(--border);border-radius:3px;padding:10px;text-align:center}
+.rstat-val{font-family:var(--ff-display);font-size:24px;letter-spacing:1px;color:var(--amber)}
+.rstat-key{font-family:var(--ff-mono);font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-top:2px}
+
+.step-list{display:flex;flex-direction:column;gap:5px;max-height:170px;overflow-y:auto}
+.step-list::-webkit-scrollbar{width:2px}
+.step-list::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.step-item{
+  display:flex;align-items:center;gap:10px;padding:8px 10px;
+  border-radius:3px;transition:background 0.15s;
+}
+.step-item.active{background:rgba(245,158,11,0.08);border-left:2px solid var(--amber)}
+.step-icon{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;font-weight:700}
+.step-text{flex:1}
+.step-action{font-size:12px;font-weight:600;color:var(--text)}
+.step-dist{font-family:var(--ff-mono);font-size:10px;color:var(--text3);margin-top:1px}
+
+/* BTN PRIMARY */
+.btn-primary{
+  width:100%;padding:13px;background:linear-gradient(135deg,var(--amber),#b45309);
+  border:none;border-radius:3px;color:#000;
+  font-family:var(--ff-display);font-size:18px;letter-spacing:2px;cursor:pointer;
+  transition:all 0.2s;box-shadow:0 6px 20px rgba(245,158,11,0.3);
+  display:flex;align-items:center;justify-content:center;gap:8px;
+}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 12px 30px rgba(245,158,11,0.4)}
+.btn-primary:active{transform:translateY(0)}
+.btn-primary.secondary{background:transparent;border:1px solid var(--border);color:var(--text2);font-size:14px;letter-spacing:1px;box-shadow:none}
+.btn-primary.secondary:hover{border-color:var(--amber);color:var(--amber)}
+
+/* ═══════ RIGHT PANEL ═══════ */
+.right-panel{
+  position:absolute;right:20px;top:80px;bottom:20px;
+  width:300px;z-index:400;display:flex;flex-direction:column;gap:10px;
+  animation:slideRight 0.5s 0.1s cubic-bezier(0.22,1,0.36,1) both;
+  pointer-events:none;
+}
+.right-panel>*{pointer-events:all}
+
+/* COMMENT FEED */
+.comment-feed{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:7px;max-height:300px}
+.comment-feed::-webkit-scrollbar{width:2px}
+.comment-feed::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+.comment-card{
+  background:rgba(245,158,11,0.04);border:1px solid var(--border);border-radius:3px;
+  padding:10px 12px;animation:fadeUp 0.3s ease;
+}
+.comment-card.incident{border-color:rgba(239,68,68,0.3);background:rgba(239,68,68,0.05)}
+.comment-card.police{border-color:rgba(34,211,238,0.3);background:rgba(34,211,238,0.05)}
+.comment-card.hazard{border-color:rgba(245,158,11,0.3);background:rgba(245,158,11,0.05)}
+.comment-card.construction{border-color:rgba(251,191,36,0.3);background:rgba(251,191,36,0.04)}
+.comment-card.clear{border-color:rgba(16,185,129,0.3);background:rgba(16,185,129,0.04)}
+
+.c-meta{display:flex;align-items:center;justify-content:space-between;margin-bottom:5px}
+.c-author{font-size:12px;font-weight:700;color:var(--amber)}
+.c-time{font-family:var(--ff-mono);font-size:10px;color:var(--text3)}
+.c-loc{font-family:var(--ff-mono);font-size:10px;color:var(--text3);margin-bottom:4px}
+.c-body{font-size:13px;color:var(--text2);line-height:1.4}
+
+/* COMMENT INPUT */
+.comment-input-area{margin-top:10px;border-top:1px solid var(--border);padding-top:10px}
+.type-row{display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap}
+.type-chip{
+  padding:4px 8px;border-radius:2px;border:1px solid var(--border);
+  background:transparent;color:var(--text3);font-family:var(--ff-mono);font-size:10px;
+  cursor:pointer;transition:all 0.15s;letter-spacing:0.5px;
+}
+.type-chip.active{border-color:var(--amber);color:var(--amber);background:rgba(245,158,11,0.1)}
+.c-input{
+  width:100%;padding:9px 12px;background:rgba(245,158,11,0.04);border:1px solid var(--border);
+  border-radius:3px;color:var(--text);font-family:var(--ff-ui);font-size:13px;
+  outline:none;resize:none;transition:all 0.2s;
+}
+.c-input:focus{border-color:var(--amber)}
+.c-input::placeholder{color:var(--text3)}
+.c-send{
+  width:100%;margin-top:6px;padding:9px;background:var(--amber);border:none;border-radius:3px;
+  color:#000;font-family:var(--ff-display);font-size:15px;letter-spacing:2px;cursor:pointer;
+  transition:all 0.2s;
+}
+.c-send:hover{background:var(--amber2)}
+
+/* ═══════ INCIDENT BAR ═══════ */
+.incident-bar{
+  position:absolute;bottom:22px;left:50%;transform:translateX(-50%);
+  z-index:500;display:flex;align-items:center;gap:6px;
+  background:var(--panel);border:1px solid var(--border2);border-radius:4px;
+  padding:10px 16px;backdrop-filter:blur(24px);
+  box-shadow:0 12px 40px rgba(0,0,0,0.7),var(--glow-amber);
+  animation:fadeUp 0.5s 0.3s both;
+}
+.bar-label{font-family:var(--ff-mono);font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:2px;margin-right:6px;white-space:nowrap}
+.bar-sep{width:1px;height:32px;background:var(--border);margin:0 4px}
+
+.inc-btn{
+  display:flex;flex-direction:column;align-items:center;gap:3px;
+  padding:8px 12px;border-radius:3px;border:1px solid transparent;
+  cursor:pointer;background:transparent;font-family:var(--ff-mono);
+  font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;
+  transition:all 0.2s;
+}
+.inc-btn .inc-emoji{font-size:20px}
+.inc-btn:hover{background:rgba(245,158,11,0.08);border-color:var(--border2);color:var(--amber);transform:translateY(-3px)}
+.inc-btn.accident:hover{border-color:rgba(239,68,68,0.5);color:var(--red);background:rgba(239,68,68,0.07)}
+.inc-btn.police:hover{border-color:rgba(34,211,238,0.5);color:var(--cyan);background:rgba(34,211,238,0.07)}
+.inc-btn.hazard:hover{border-color:rgba(245,158,11,0.5);color:var(--amber);background:rgba(245,158,11,0.07)}
+.inc-btn.clear:hover{border-color:rgba(16,185,129,0.5);color:var(--green);background:rgba(16,185,129,0.07)}
+.inc-btn:active{transform:scale(0.92) translateY(0)}
+
+/* ═══════ MAP CONTROLS ═══════ */
+.map-controls{
+  position:absolute;right:340px;top:50%;transform:translateY(-50%);
+  display:flex;flex-direction:column;gap:8px;z-index:400;
+}
+.mc-btn{
+  width:40px;height:40px;background:var(--panel);border:1px solid var(--border);border-radius:3px;
+  color:var(--text2);font-size:16px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;transition:all 0.2s;
+  backdrop-filter:blur(10px);
+}
+.mc-btn:hover{border-color:var(--amber);color:var(--amber);box-shadow:var(--glow-amber)}
+
+/* ═══════ TICKER ═══════ */
+.ticker-wrap{
+  position:absolute;bottom:0;left:0;right:0;height:32px;z-index:400;
+  background:rgba(5,8,15,0.9);border-top:1px solid var(--border);
+  display:flex;align-items:center;overflow:hidden;
+}
+.ticker-tag{
+  flex-shrink:0;padding:0 16px;height:100%;display:flex;align-items:center;
+  background:var(--amber);font-family:var(--ff-display);font-size:13px;letter-spacing:2px;color:#000;
+}
+.ticker-inner{display:flex;animation:ticker 30s linear infinite;white-space:nowrap}
+.ticker-item{font-family:var(--ff-mono);font-size:11px;color:var(--text3);padding:0 30px;letter-spacing:1px}
+.ticker-item span{color:var(--amber);margin-right:6px}
+
+/* ═══════ NOTIFICATIONS ═══════ */
+.notif{
+  position:fixed;top:90px;left:50%;transform:translateX(-50%);
+  z-index:9000;background:var(--panel);border:1px solid var(--amber);border-radius:3px;
+  padding:13px 20px;display:flex;align-items:center;gap:12px;min-width:320px;
+  backdrop-filter:blur(20px);box-shadow:0 12px 40px rgba(0,0,0,0.8),var(--glow-amber);
+  animation:fadeUp 0.4s ease;
+}
+.notif-emoji{font-size:22px}
+.notif-title{font-weight:700;font-size:14px;color:var(--amber)}
+.notif-body{font-size:12px;color:var(--text3);margin-top:2px}
+.notif-close{margin-left:auto;background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px}
+.notif-close:hover{color:var(--text)}
+
+/* ═══════ INCIDENT PINS ═══════ */
+.inc-pin{font-size:22px;cursor:pointer;animation:popIn 0.5s cubic-bezier(0.34,1.56,0.64,1);text-shadow:0 2px 8px rgba(0,0,0,0.8);line-height:1}
+
+/* ═══════ COMPASS ═══════ */
+.compass{
+  position:absolute;left:360px;bottom:50px;z-index:400;
+  width:60px;height:60px;
+  background:var(--panel);border:1px solid var(--border);border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--ff-display);font-size:11px;letter-spacing:1px;
+  box-shadow:var(--glow-amber);
+}
+.compass-n{color:var(--red);font-size:13px}
+.compass-s,.compass-e,.compass-w{color:var(--text3);font-size:10px;position:absolute}
+.compass-n-w{position:absolute;top:8px;left:50%;transform:translateX(-50%)}
+.compass-s-w{position:absolute;bottom:8px;left:50%;transform:translateX(-50%)}
+.compass-e-w{position:absolute;right:8px;top:50%;transform:translateY(-50%)}
+.compass-w-w{position:absolute;left:8px;top:50%;transform:translateY(-50%)}
+.compass-needle{position:absolute;width:2px;height:18px;background:linear-gradient(to bottom,var(--red) 50%,rgba(255,255,255,0.3) 50%);border-radius:2px;top:50%;left:50%;transform:translate(-50%,-50%) rotate(0deg);transform-origin:center}
+
+/* ═══════ STATS HUD ═══════ */
+.hud{
+  position:absolute;left:360px;top:90px;z-index:400;
+  display:flex;flex-direction:column;gap:6px;pointer-events:none;
+}
+.hud-item{
+  background:var(--panel);border:1px solid var(--border);border-radius:3px;
+  padding:8px 14px;backdrop-filter:blur(10px);
+  font-family:var(--ff-mono);font-size:11px;color:var(--text3);
+  display:flex;align-items:center;gap:8px;
+}
+.hud-item .hv{color:var(--amber);font-size:14px;font-weight:500}
+
+/* ═══════ LOADING SPINNER ═══════ */
+.loader{display:inline-block;width:16px;height:16px;border:2px solid rgba(245,158,11,0.3);border-top-color:var(--amber);border-radius:50%;animation:spin 0.7s linear infinite;vertical-align:middle;margin-right:6px}
+
+/* ROUTE LINE override */
+.leaflet-interactive{stroke:var(--amber) !important;stroke-width:4 !important}
+
+/* SCROLLBAR */
+::-webkit-scrollbar{width:3px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+::-webkit-scrollbar-thumb:hover{background:var(--amber)}
+</style>
+</head>
+<body>
+
+<!-- CURSOR -->
+<div id="cursor"></div>
+<div id="cursor-ring"></div>
+
+<!-- ═══════════════════ LOGIN PAGE ═══════════════════ -->
+<div id="loginPage">
+  <div class="login-bg-grid"></div>
+  <div class="login-bg-orb" style="width:600px;height:600px;top:-150px;left:-200px;background:radial-gradient(circle,rgba(245,158,11,0.1) 0%,transparent 70%)"></div>
+  <div class="login-bg-orb" style="width:500px;height:500px;bottom:-200px;right:-150px;background:radial-gradient(circle,rgba(34,211,238,0.06) 0%,transparent 70%)"></div>
+
+  <!-- Animated corner lines -->
+  <svg style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1" viewBox="0 0 100 100" preserveAspectRatio="none">
+    <line x1="0" y1="0" x2="100" y2="0" stroke="rgba(245,158,11,0.06)" stroke-width="0.1"/>
+    <line x1="0" y1="100" x2="100" y2="100" stroke="rgba(245,158,11,0.06)" stroke-width="0.1"/>
+    <line x1="0" y1="0" x2="0" y2="100" stroke="rgba(245,158,11,0.06)" stroke-width="0.1"/>
+    <line x1="100" y1="0" x2="100" y2="100" stroke="rgba(245,158,11,0.06)" stroke-width="0.1"/>
+  </svg>
+
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="login-logo-icon">🗺</div>
+      <div class="login-wordmark">LIVETRACK</div>
+      <div class="login-sub">// London Navigation System</div>
+    </div>
+
+    <div class="login-mode">
+      <button class="mode-btn active" id="tabEmail" onclick="switchLoginTab('email')">📧 EMAIL</button>
+      <button class="mode-btn" id="tabPhone" onclick="switchLoginTab('phone')">📱 PHONE</button>
+    </div>
+
+    <div id="emailFields">
+      <div class="field-wrap">
+        <label class="field-label">Email Address</label>
+        <span class="field-icon">📧</span>
+        <input class="field-input" type="email" id="emailInput" placeholder="operator@livetrack.io" onkeydown="if(event.key==='Enter')doLogin()">
+      </div>
+      <div class="field-wrap">
+        <label class="field-label">Access Code</label>
+        <span class="field-icon">🔒</span>
+        <input class="field-input" type="password" id="passInput" placeholder="••••••••••" onkeydown="if(event.key==='Enter')doLogin()">
+      </div>
+    </div>
+
+    <div id="phoneFields" style="display:none">
+      <div class="field-wrap">
+        <label class="field-label">Phone Number</label>
+        <span class="field-icon">📱</span>
+        <input class="field-input" type="tel" id="phoneInput" placeholder="+44 7700 900000" onkeydown="if(event.key==='Enter')doLogin()">
+      </div>
+      <div class="field-wrap">
+        <label class="field-label">Access Code</label>
+        <span class="field-icon">🔒</span>
+        <input class="field-input" type="password" placeholder="••••••••••" onkeydown="if(event.key==='Enter')doLogin()">
+      </div>
+    </div>
+
+    <button class="btn-login" id="loginBtn" onclick="doLogin()">LAUNCH SYSTEM</button>
+
+    <div class="login-divider">OR CONTINUE WITH</div>
+    <div class="social-grid">
+      <button class="btn-social" onclick="doLogin()">🌐 GOOGLE</button>
+      <button class="btn-social" onclick="doLogin()">🍎 APPLE</button>
+    </div>
+
+    <div class="login-footer">
+      No account? <a onclick="doLogin()">Request access →</a> &nbsp;·&nbsp; <a href="#">Forgot code?</a>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ MAIN APP ═══════════════════ -->
+<div id="app">
+
+  <!-- Map -->
+  <div id="map"></div>
+
+  <!-- Top Bar -->
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-icon">🗺</div>
+      <div class="brand-name">LIVETRACK</div>
+    </div>
+
+    <div class="search-wrap">
+      <input class="main-search" id="mainSearch" placeholder="Search London… Big Ben, Harrods, King's Cross…" oninput="handleSearch(this)" autocomplete="off">
+      <button class="search-go" onclick="getDirections()">GO →</button>
+      <div class="autocomplete-box" id="acBox"></div>
+    </div>
+
+    <div class="topbar-right">
+      <button class="top-btn" id="btnDir" onclick="togglePanel('dir')" title="Directions">🧭</button>
+      <button class="top-btn active" id="btnFeed" onclick="togglePanel('feed')" title="Live Feed">🗣</button>
+      <button class="top-btn" onclick="locateMe()" title="My Location">📍</button>
+      <div class="avatar" onclick="doLogout()">JD</div>
+    </div>
+  </div>
+
+  <!-- Left Panel -->
+  <div class="left-panel" id="leftPanel">
+
+    <!-- Search / Categories -->
+    <div class="panel-card">
+      <div class="panel-title">
+        NAVIGATOR
+        <div class="live-badge"><div class="live-dot"></div>LIVE</div>
+      </div>
+
+      <div class="cat-tabs">
+        <button class="cat-tab active" onclick="switchCatTab('search',this)">SEARCH</button>
+        <button class="cat-tab" onclick="switchCatTab('cat',this)">PLACES</button>
+        <button class="cat-tab" onclick="switchCatTab('popular',this)">POPULAR</button>
+      </div>
+
+      <!-- Search sub-tab -->
+      <div id="catSearch">
+        <div id="searchHint" style="font-family:var(--ff-mono);font-size:11px;color:var(--text3);text-align:center;padding:20px 0">
+          Type above to search 200+ London destinations
+        </div>
+        <div class="dest-list" id="searchResults" style="display:none"></div>
+      </div>
+
+      <!-- Category sub-tab -->
+      <div id="catCat" style="display:none">
+        <div class="cat-icons" id="catIconGrid"></div>
+        <div class="dest-list" id="catResults"></div>
+      </div>
+
+      <!-- Popular sub-tab -->
+      <div id="catPopular" style="display:none">
+        <div class="dest-list" id="popularResults"></div>
+      </div>
+    </div>
+
+    <!-- Route info (hidden until route loaded) -->
+    <div class="panel-card" id="routeCard" style="display:none">
+      <div class="panel-title">ROUTE <div class="live-badge"><div class="live-dot"></div>ACTIVE</div></div>
+      <div class="route-stats" id="routeStats"></div>
+      <div style="font-family:var(--ff-mono);font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Turn-by-Turn</div>
+      <div class="step-list" id="stepList"></div>
+    </div>
+
+    <!-- Actions -->
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button class="btn-primary" onclick="getDirections()">🧭 GET DIRECTIONS</button>
+      <button class="btn-primary secondary" onclick="clearRoute()">✕ CLEAR ROUTE</button>
+    </div>
+  </div>
+
+  <!-- Right Panel -->
+  <div class="right-panel" id="rightPanel">
+    <div class="panel-card" style="flex:1;display:flex;flex-direction:column;overflow:hidden;max-height:calc(100vh - 130px)">
+      <div class="panel-title">
+        LIVE REPORTS
+        <span id="feedCount" style="font-family:var(--ff-mono);font-size:12px;color:var(--amber);font-weight:normal">0</span>
+      </div>
+      <div class="comment-feed" id="commentFeed"></div>
+      <div class="comment-input-area">
+        <div class="type-row" id="typeRow"></div>
+        <textarea class="c-input" id="commentInput" rows="2" placeholder="Report an incident on your route…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendComment()}"></textarea>
+        <button class="c-send" onclick="sendComment()">SEND REPORT →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- HUD -->
+  <div class="hud" id="hud">
+    <div class="hud-item">🛰 GPS <span class="hv" id="hudGps">LOCKED</span></div>
+    <div class="hud-item">🚦 TRAFFIC <span class="hv" id="hudTraffic" style="color:var(--green)">LOW</span></div>
+    <div class="hud-item">⏱ SPEED <span class="hv" id="hudSpeed">32 MPH</span></div>
+  </div>
+
+  <!-- Map Controls -->
+  <div class="map-controls" id="mapControls">
+    <button class="mc-btn" onclick="mapZoom(1)" title="Zoom In">＋</button>
+    <button class="mc-btn" onclick="mapZoom(-1)" title="Zoom Out">－</button>
+    <button class="mc-btn" onclick="locateMe()" title="My Location">🎯</button>
+    <button class="mc-btn" onclick="toggleMapStyle()" title="Map Style" id="styleBtn">🌙</button>
+  </div>
+
+  <!-- Compass -->
+  <div class="compass" id="mapControls2" style="left:360px">
+    <div class="compass-n-w compass-n">N</div>
+    <div class="compass-s-w compass-s">S</div>
+    <div class="compass-e-w compass-e">E</div>
+    <div class="compass-w-w compass-w">W</div>
+    <div class="compass-needle"></div>
+  </div>
+
+  <!-- Incident Bar -->
+  <div class="incident-bar">
+    <span class="bar-label">Report</span>
+    <div class="bar-sep"></div>
+    <button class="inc-btn accident" onclick="addIncident('accident')"><span class="inc-emoji">🚨</span>Accident</button>
+    <button class="inc-btn police" onclick="addIncident('police')"><span class="inc-emoji">🚔</span>Police</button>
+    <button class="inc-btn hazard" onclick="addIncident('hazard')"><span class="inc-emoji">⚠️</span>Hazard</button>
+    <button class="inc-btn" onclick="addIncident('construction')"><span class="inc-emoji">🚧</span>Works</button>
+    <button class="inc-btn" onclick="addIncident('traffic')"><span class="inc-emoji">🚗</span>Traffic</button>
+    <button class="inc-btn clear" onclick="addIncident('clear')"><span class="inc-emoji">✅</span>Clear</button>
+    <div class="bar-sep"></div>
+    <button class="inc-btn" onclick="addIncident('camera')"><span class="inc-emoji">📷</span>Camera</button>
+    <button class="inc-btn" onclick="addIncident('closure')"><span class="inc-emoji">🚫</span>Closed</button>
+  </div>
+
+  <!-- Ticker -->
+  <div class="ticker-wrap">
+    <div class="ticker-tag">🔴 LIVE</div>
+    <div class="ticker-inner" id="tickerInner"></div>
+  </div>
+
+</div>
+
+<!-- NOTIFICATION CONTAINER -->
+<div id="notifContainer" style="position:fixed;top:90px;left:50%;transform:translateX(-50%);z-index:9000;display:flex;flex-direction:column;gap:8px;pointer-events:none;width:400px">
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// CURSOR
+// ═══════════════════════════════════════════════════════
+const cur = document.getElementById('cursor');
+const ring = document.getElementById('cursor-ring');
+document.addEventListener('mousemove', e => {
+  cur.style.left = e.clientX + 'px';
+  cur.style.top = e.clientY + 'px';
+  ring.style.left = e.clientX + 'px';
+  ring.style.top = e.clientY + 'px';
+});
+
+// ═══════════════════════════════════════════════════════
+// DATA
+// ═══════════════════════════════════════════════════════
+const LONDON = [51.5074, -0.1278];
+const londonDB = {
+  landmarks:[
+    {name:"Big Ben",coords:[51.5007,-0.1246],icon:"🏰",cat:"landmarks"},
+    {name:"London Eye",coords:[51.5033,-0.1196],icon:"🎡",cat:"landmarks"},
+    {name:"Tower Bridge",coords:[51.5055,-0.0754],icon:"🌉",cat:"landmarks"},
+    {name:"Buckingham Palace",coords:[51.5015,-0.1419],icon:"👑",cat:"landmarks"},
+    {name:"Trafalgar Square",coords:[51.5081,-0.1281],icon:"🗿",cat:"landmarks"},
+    {name:"Westminster Abbey",coords:[51.4995,-0.1272],icon:"⛪",cat:"landmarks"},
+    {name:"St. Paul's Cathedral",coords:[51.5138,-0.0983],icon:"🕍",cat:"landmarks"},
+    {name:"The Shard",coords:[51.5047,-0.0866],icon:"🏢",cat:"landmarks"},
+    {name:"Natural History Museum",coords:[51.4965,-0.1763],icon:"🦕",cat:"landmarks"},
+    {name:"British Museum",coords:[51.5194,-0.1270],icon:"🏛️",cat:"landmarks"},
+    {name:"Tower of London",coords:[51.5074,-0.0759],icon:"🏰",cat:"landmarks"},
+    {name:"Tate Modern",coords:[51.5076,-0.0994],icon:"🎨",cat:"landmarks"},
+    {name:"National Gallery",coords:[51.5089,-0.1283],icon:"🖼️",cat:"landmarks"},
+    {name:"Royal Albert Hall",coords:[51.5009,-0.1774],icon:"🎵",cat:"landmarks"},
+    {name:"Canary Wharf",coords:[51.5054,-0.0235],icon:"🏙️",cat:"landmarks"},
+    {name:"Greenwich Observatory",coords:[51.4770,-0.0014],icon:"🔭",cat:"landmarks"},
+  ],
+  transport:[
+    {name:"King's Cross Station",coords:[51.5316,-0.1230],icon:"🚆",cat:"transport"},
+    {name:"Paddington Station",coords:[51.5164,-0.1779],icon:"🚆",cat:"transport"},
+    {name:"Victoria Station",coords:[51.4945,-0.1430],icon:"🚆",cat:"transport"},
+    {name:"Liverpool Street",coords:[51.5181,-0.0830],icon:"🚆",cat:"transport"},
+    {name:"Waterloo Station",coords:[51.5027,-0.1128],icon:"🚆",cat:"transport"},
+    {name:"Heathrow T5",coords:[51.4700,-0.4543],icon:"✈️",cat:"transport"},
+    {name:"Gatwick Airport",coords:[51.1481,-0.1903],icon:"✈️",cat:"transport"},
+    {name:"London City Airport",coords:[51.5054,0.0557],icon:"✈️",cat:"transport"},
+    {name:"St Pancras Intl",coords:[51.5319,-0.1233],icon:"🚄",cat:"transport"},
+    {name:"Euston Station",coords:[51.5284,-0.1331],icon:"🚆",cat:"transport"},
+    {name:"London Bridge Stn",coords:[51.5049,-0.0860],icon:"🚆",cat:"transport"},
+    {name:"Embankment Pier",coords:[51.4910,-0.1210],icon:"⛴️",cat:"transport"},
+  ],
+  shopping:[
+    {name:"Oxford Street",coords:[51.5153,-0.1551],icon:"🛍️",cat:"shopping"},
+    {name:"Harrods",coords:[51.4986,-0.1790],icon:"💎",cat:"shopping"},
+    {name:"Selfridges",coords:[51.5154,-0.1508],icon:"🛍️",cat:"shopping"},
+    {name:"Covent Garden",coords:[51.5114,-0.1244],icon:"🎭",cat:"shopping"},
+    {name:"Westfield London",coords:[51.5081,-0.2145],icon:"🏬",cat:"shopping"},
+    {name:"Camden Market",coords:[51.5416,-0.1432],icon:"🛒",cat:"shopping"},
+    {name:"Portobello Market",coords:[51.5138,-0.2072],icon:"🛍️",cat:"shopping"},
+    {name:"Carnaby Street",coords:[51.5141,-0.1397],icon:"🎪",cat:"shopping"},
+    {name:"Westfield Stratford",coords:[51.5426,-0.0012],icon:"🏬",cat:"shopping"},
+  ],
+  food:[
+    {name:"Borough Market",coords:[51.5054,-0.0913],icon:"🍖",cat:"food"},
+    {name:"Chinatown London",coords:[51.5130,-0.1305],icon:"🥟",cat:"food"},
+    {name:"Brick Lane",coords:[51.5194,-0.0712],icon:"🌮",cat:"food"},
+    {name:"Southbank Market",coords:[51.5040,-0.1160],icon:"🍲",cat:"food"},
+    {name:"Boxpark Shoreditch",coords:[51.5226,-0.0793],icon:"🍔",cat:"food"},
+    {name:"Maltby Street Market",coords:[51.5024,-0.0797],icon:"🧀",cat:"food"},
+    {name:"Broadway Market",coords:[51.5367,-0.0572],icon:"☕",cat:"food"},
+    {name:"Spitalfields Market",coords:[51.5189,-0.0736],icon:"🥙",cat:"food"},
+  ],
+  nightlife:[
+    {name:"Fabric Nightclub",coords:[51.5203,-0.1015],icon:"🎶",cat:"nightlife"},
+    {name:"Ministry of Sound",coords:[51.4980,-0.0980],icon:"🔊",cat:"nightlife"},
+    {name:"Shoreditch Bars",coords:[51.5230,-0.0750],icon:"🍸",cat:"nightlife"},
+    {name:"Soho Nightlife",coords:[51.5130,-0.1350],icon:"🍹",cat:"nightlife"},
+    {name:"Jazz Cafe Camden",coords:[51.5395,-0.1445],icon:"🎷",cat:"nightlife"},
+    {name:"Ronnie Scott's",coords:[51.5131,-0.1344],icon:"🎺",cat:"nightlife"},
+  ],
+  parks:[
+    {name:"Hyde Park",coords:[51.5073,-0.1654],icon:"🌳",cat:"parks"},
+    {name:"Regent's Park",coords:[51.5288,-0.1549],icon:"🌺",cat:"parks"},
+    {name:"Richmond Park",coords:[51.4420,-0.2680],icon:"🦌",cat:"parks"},
+    {name:"Greenwich Park",coords:[51.4779,0.0017],icon:"🌅",cat:"parks"},
+    {name:"Hampstead Heath",coords:[51.5575,-0.1700],icon:"🏞️",cat:"parks"},
+    {name:"Kensington Gardens",coords:[51.5062,-0.1808],icon:"🌸",cat:"parks"},
+    {name:"Victoria Park",coords:[51.5357,-0.0376],icon:"🌿",cat:"parks"},
+    {name:"Battersea Park",coords:[51.4793,-0.1558],icon:"🌻",cat:"parks"},
+  ]
+};
+
+const allDests = Object.values(londonDB).flat();
+const CAT_META = [
+  {key:'landmarks',icon:'🏰',label:'Landmarks'},
+  {key:'transport',icon:'🚆',label:'Transport'},
+  {key:'shopping',icon:'🛍️',label:'Shopping'},
+  {key:'food',icon:'🍖',label:'Food'},
+  {key:'nightlife',icon:'🎶',label:'Nightlife'},
+  {key:'parks',icon:'🌳',label:'Parks'},
+];
+
+const COMMENT_TYPES = [
+  {key:'normal',emoji:'💬',label:'Note'},
+  {key:'incident',emoji:'🚨',label:'Incident'},
+  {key:'police',emoji:'🚔',label:'Police'},
+  {key:'hazard',emoji:'⚠️',label:'Hazard'},
+  {key:'construction',emoji:'🚧',label:'Works'},
+  {key:'clear',emoji:'✅',label:'Clear'},
+];
+
+// ═══════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════
+let map, routeControl, userMarker, selectedDest=null;
+let currentLatLng = LONDON;
+let routeActive = false;
+let mapStyleDark = true;
+let comments = [];
+let selectedCommentType = 'normal';
+let incidentPins = [];
+let notifTimer = null;
+let activeCatTab = 'search';
+let nextId = 1;
+
+// ═══════════════════════════════════════════════════════
+// LOGIN
+// ═══════════════════════════════════════════════════════
+function switchLoginTab(tab) {
+  document.getElementById('emailFields').style.display = tab==='email'?'block':'none';
+  document.getElementById('phoneFields').style.display = tab==='phone'?'block':'none';
+  document.getElementById('tabEmail').classList.toggle('active', tab==='email');
+  document.getElementById('tabPhone').classList.toggle('active', tab==='phone');
+}
+
+function doLogin() {
+  const btn = document.getElementById('loginBtn');
+  btn.innerHTML = '<span class="loader"></span> AUTHENTICATING…';
+  btn.disabled = true;
+  setTimeout(() => {
+    document.getElementById('loginPage').style.display = 'none';
+    const app = document.getElementById('app');
+    app.style.display = 'flex';
+    initMap();
+    initUI();
+  }, 1400);
+}
+
+function doLogout() {
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('loginPage').style.display = 'flex';
+  document.getElementById('loginBtn').innerHTML = 'LAUNCH SYSTEM';
+  document.getElementById('loginBtn').disabled = false;
+  if (map) { map.remove(); map = null; routeControl = null; }
+}
+
+// ═══════════════════════════════════════════════════════
+// MAP INIT
+// ═══════════════════════════════════════════════════════
+function initMap() {
+  map = L.map('map', {
+    center: LONDON, zoom: 14,
+    zoomControl: false,
+    attributionControl: false,
+  });
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap',
+    maxZoom: 19,
+  }).addTo(map);
+
+  // User marker
+  const userIcon = L.divIcon({
+    html: `<div style="width:18px;height:18px;border-radius:50%;background:#22d3ee;border:3px solid #fff;box-shadow:0 0 0 4px rgba(34,211,238,0.3),0 0 20px rgba(34,211,238,0.6)"></div>`,
+    className: '', iconSize: [18,18], iconAnchor: [9,9]
+  });
+  userMarker = L.marker(LONDON, {icon: userIcon}).addTo(map);
+  userMarker.bindPopup('<b style="font-family:Rajdhani">📍 Your Location</b>').openPopup();
+
+  // Add some initial incident pins
+  addInitialPins();
+
+  // Simulate user moving slightly
+  setInterval(() => {
+    const jitter = () => (Math.random()-0.5)*0.001;
+    currentLatLng = [LONDON[0]+jitter(), LONDON[1]+jitter()];
+    userMarker.setLatLng(currentLatLng);
+    updateHUD();
+  }, 4000);
+
+  // Map click → could add incident
+  map.on('click', e => {
+    selectedDest = { name: 'Custom Location', coords: [e.latlng.lat, e.latlng.lng] };
+    notify('📍','Location Selected',`${e.latlng.lat.toFixed(4)}, ${e.latlng.lng.toFixed(4)}`,'#f59e0b');
+  });
+}
+
+function addInitialPins() {
+  const initPins = [
+    {coords:[51.5007,-0.1246],type:'police',emoji:'🚔'},
+    {coords:[51.5055,-0.0754],type:'hazard',emoji:'⚠️'},
+    {coords:[51.5081,-0.2145],type:'accident',emoji:'🚨'},
+    {coords:[51.5033,-0.1196],type:'clear',emoji:'✅'},
+  ];
+  initPins.forEach(p => spawnPin(p.coords, p.type, p.emoji));
+}
+
+function spawnPin(coords, type, emoji) {
+  const icon = L.divIcon({
+    html: `<div class="inc-pin" title="${type}">${emoji}</div>`,
+    className: '', iconSize: [30,30], iconAnchor: [15,30]
+  });
+  const marker = L.marker(coords, {icon}).addTo(map);
+  const colours = {accident:'#ef4444',police:'#22d3ee',hazard:'#f59e0b',construction:'#fbbf24',traffic:'#f97316',clear:'#10b981',camera:'#8b5cf6',closure:'#ef4444'};
+  marker.bindPopup(`
+    <div style="font-family:Rajdhani;min-width:160px">
+      <div style="font-size:18px;font-weight:700;color:${colours[type]||'#f59e0b'};border-bottom:1px solid rgba(245,158,11,0.2);padding-bottom:6px;margin-bottom:6px">${emoji} ${type.toUpperCase()}</div>
+      <div style="font-size:12px;color:#888;font-family:'JetBrains Mono'">Reported just now · Click for details</div>
+    </div>
+  `);
+  incidentPins.push(marker);
+  return marker;
+}
+
+// ═══════════════════════════════════════════════════════
+// UI INIT
+// ═══════════════════════════════════════════════════════
+function initUI() {
+  buildCatIcons();
+  buildTypeRow();
+  loadComments();
+  loadPopular();
+  buildTicker();
+  updateHUD();
+  setInterval(simulateLiveComment, 14000);
+  setInterval(updateHUD, 5000);
+}
+
+function buildCatIcons() {
+  const grid = document.getElementById('catIconGrid');
+  grid.innerHTML = CAT_META.map(c => `
+    <div class="cat-icon-btn" onclick="filterCat('${c.key}',this)">
+      <span class="icon">${c.icon}</span>
+      <span class="lbl">${c.label}</span>
+    </div>
+  `).join('');
+}
+
+function buildTypeRow() {
+  const row = document.getElementById('typeRow');
+  row.innerHTML = COMMENT_TYPES.map(t => `
+    <button class="type-chip ${t.key==='normal'?'active':''}" onclick="selectType('${t.key}',this)">
+      ${t.emoji} ${t.label}
+    </button>
+  `).join('');
+}
+
+function buildTicker() {
+  const tickerData = [
+    {icon:'🚔',text:'Police activity reported on A40 westbound'},
+    {icon:'🚨',text:'Accident cleared on M25 J15'},
+    {icon:'🚧',text:'Roadworks on Oxford Street until 18:00'},
+    {icon:'✅',text:'A3 southbound now flowing freely'},
+    {icon:'⚠️',text:'Hazard on Blackwall Tunnel approach'},
+    {icon:'🚗',text:'Heavy traffic Hammersmith Bridge both ways'},
+    {icon:'🎉',text:'Chelsea FC match tonight — expect road closures'},
+    {icon:'🚆',text:'District Line delays — consider alternative routes'},
+  ];
+  const inner = document.getElementById('tickerInner');
+  const html = [...tickerData,...tickerData].map(t => `<span class="ticker-item"><span>${t.icon}</span> ${t.text}</span>`).join('');
+  inner.innerHTML = html;
+}
+
+function loadPopular() {
+  const shuffled = [...allDests].sort(()=>Math.random()-0.5).slice(0,12);
+  renderDestList('popularResults', shuffled);
+}
+
+function loadComments() {
+  const seed = [
+    {author:'Alex T.',time:'1m ago',loc:'Westminster Bridge',text:'Police checkpoint. Slowing down northbound.',type:'police',emoji:'🚔'},
+    {author:'Sophie R.',time:'3m ago',loc:'Oxford Circus',text:'Massive crowd due to sale. Allow extra time!',type:'hazard',emoji:'⚠️'},
+    {author:'DanM',time:'5m ago',loc:'A40 Westway',text:'Accident in middle lane, recovery truck on scene.',type:'incident',emoji:'🚨'},
+    {author:'Priya K.',time:'7m ago',loc:'Borough Market',text:'All clear, road open again. Great food market!',type:'clear',emoji:'✅'},
+  ];
+  seed.forEach(c => pushComment(c));
+}
+
+// ═══════════════════════════════════════════════════════
+// SEARCH
+// ═══════════════════════════════════════════════════════
+function handleSearch(input) {
+  const q = input.value.toLowerCase().trim();
+  const box = document.getElementById('acBox');
+  const hint = document.getElementById('searchHint');
+  const results = document.getElementById('searchResults');
+
+  if (q.length < 2) {
+    box.style.display = 'none';
+    if (activeCatTab==='search') { hint.style.display='block'; results.style.display='none'; }
+    return;
+  }
+
+  const matches = allDests.filter(d => d.name.toLowerCase().includes(q)).slice(0,8);
+
+  if (matches.length) {
+    box.innerHTML = matches.map((d,i) => `
+      <div class="ac-item" data-idx="${i}" onmouseenter="hoverAC(this)" onclick="selectDest('${d.name}',${d.coords[0]},${d.coords[1]})">
+        <span class="ac-icon">${d.icon}</span>
+        <div>
+          <div class="ac-name">${d.name}</div>
+          <div class="ac-meta">${d.cat.toUpperCase()} · ${getDistStr(d.coords)}</div>
+        </div>
+      </div>
+    `).join('');
+    box.style.display = 'block';
+  } else {
+    box.innerHTML = '<div class="ac-item"><span class="ac-icon">🔍</span><div><div class="ac-name" style="color:var(--text3)">No results found</div></div></div>';
+    box.style.display = 'block';
+  }
+
+  // Also update search sub-tab
+  if (activeCatTab==='search') {
+    hint.style.display='none';
+    renderDestList('searchResults', matches);
+    results.style.display='block';
+  }
+}
+
+function hoverAC(el) {
+  document.querySelectorAll('.ac-item').forEach(e=>e.classList.remove('hovered'));
+  el.classList.add('hovered');
+}
+
+function selectDest(name, lat, lng) {
+  selectedDest = {name, coords:[lat,lng]};
+  document.getElementById('mainSearch').value = name;
+  document.getElementById('acBox').style.display = 'none';
+  map.flyTo([lat,lng], 15, {duration:1.4});
+  notify('📍','Destination Set',name,'#f59e0b');
+}
+
+function getDistStr(coords) {
+  const R = 6371;
+  const dLat = (coords[0]-currentLatLng[0])*Math.PI/180;
+  const dLng = (coords[1]-currentLatLng[1])*Math.PI/180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(currentLatLng[0]*Math.PI/180)*Math.cos(coords[0]*Math.PI/180)*Math.sin(dLng/2)**2;
+  const d = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return d < 1 ? `${Math.round(d*1000)}m away` : `${d.toFixed(1)}km away`;
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.search-wrap')) document.getElementById('acBox').style.display='none';
+});
+
+// ═══════════════════════════════════════════════════════
+// DIRECTIONS
+// ═══════════════════════════════════════════════════════
+function getDirections() {
+  const dest = selectedDest;
+  if (!dest) { notify('⚠️','No Destination','Please search and select a destination first','#ef4444'); return; }
+
+  if (routeControl) map.removeControl(routeControl);
+
+  routeControl = L.Routing.control({
+    waypoints: [L.latLng(currentLatLng), L.latLng(dest.coords[0], dest.coords[1])],
+    routeWhileDragging: false,
+    addWaypoints: false,
+    lineOptions: {
+      styles: [{color:'#f59e0b', opacity:0.9, weight:5}]
+    },
+    createMarker: () => null,
+  }).addTo(map);
+
+  routeControl.on('routesfound', e => {
+    const route = e.routes[0];
+    const mins = Math.round(route.summary.totalTime/60);
+    const km = (route.summary.totalDistance/1000).toFixed(1);
+    routeActive = true;
+    showRouteCard(dest.name, mins, km, route.instructions || []);
+    notify('🧭','Route Calculated',`${km} km · ~${mins} min to ${dest.name}`,'#f59e0b');
+  });
+}
+
+function showRouteCard(dest, mins, km, instructions) {
+  const card = document.getElementById('routeCard');
+  card.style.display = 'block';
+  document.getElementById('routeStats').innerHTML = `
+    <div class="rstat"><div class="rstat-val">${mins}</div><div class="rstat-key">Minutes</div></div>
+    <div class="rstat"><div class="rstat-val">${km}</div><div class="rstat-key">km</div></div>
+    <div class="rstat"><div class="rstat-val" style="color:var(--green)">GO</div><div class="rstat-key">Status</div></div>
+  `;
+  const steps = instructions.slice(0,6).map((ins,i) => `
+    <div class="step-item ${i===0?'active':''}">
+      <div class="step-icon" style="background:rgba(245,158,11,0.1);color:var(--amber)">${getDirectionArrow(ins.type)}</div>
+      <div class="step-text">
+        <div class="step-action">${ins.text||'Continue'}</div>
+        <div class="step-dist">${ins.distance?Math.round(ins.distance)+'m':''}</div>
+      </div>
+    </div>
+  `).join('');
+  document.getElementById('stepList').innerHTML = steps || '<div style="font-family:var(--ff-mono);font-size:11px;color:var(--text3);padding:10px">Route loaded</div>';
+}
+
+function getDirectionArrow(type) {
+  const arrows = {Left:'↰',Right:'↱',SlightLeft:'↖',SlightRight:'↗',SharpLeft:'⬅',SharpRight:'➡',Straight:'↑',Destination:'◎',WaypointReached:'⬤'};
+  return arrows[type] || '↑';
+}
+
+function clearRoute() {
+  if (routeControl) { map.removeControl(routeControl); routeControl=null; }
+  document.getElementById('routeCard').style.display='none';
+  routeActive = false;
+  selectedDest = null;
+  document.getElementById('mainSearch').value='';
+  notify('✕','Route Cleared','Navigation stopped','#a09070');
+}
+
+// ═══════════════════════════════════════════════════════
+// CATEGORIES
+// ═══════════════════════════════════════════════════════
+function switchCatTab(tab, el) {
+  activeCatTab = tab;
+  document.querySelectorAll('.cat-tab').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  ['catSearch','catCat','catPopular'].forEach(id => document.getElementById(id).style.display='none');
+  document.getElementById(tab==='search'?'catSearch':tab==='cat'?'catCat':'catPopular').style.display='block';
+  if (tab==='cat') filterCat('landmarks', document.querySelector('.cat-icon-btn'));
+  if (tab==='popular') loadPopular();
+}
+
+function filterCat(cat, el) {
+  document.querySelectorAll('.cat-icon-btn').forEach(b=>b.classList.remove('active'));
+  if (el) el.classList.add('active');
+  const dests = londonDB[cat]||[];
+  renderDestList('catResults', dests);
+}
+
+function renderDestList(id, dests) {
+  document.getElementById(id).innerHTML = dests.map(d => `
+    <div class="dest-item" onclick="selectDest('${d.name.replace(/'/g,"\\'")}',${d.coords[0]},${d.coords[1]})">
+      <span class="emoji">${d.icon}</span>
+      <span class="dname">${d.name}</span>
+      <span class="dist">${getDistStr(d.coords)}</span>
+    </div>
+  `).join('');
+}
+
+// ═══════════════════════════════════════════════════════
+// COMMENTS
+// ═══════════════════════════════════════════════════════
+function selectType(key, el) {
+  selectedCommentType = key;
+  document.querySelectorAll('.type-chip').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active');
+}
+
+function pushComment(c) {
+  comments.unshift(c);
+  const feed = document.getElementById('commentFeed');
+  const div = document.createElement('div');
+  div.className = `comment-card ${c.type}`;
+  div.innerHTML = `
+    <div class="c-meta">
+      <span class="c-author">${c.emoji||'💬'} ${c.author}</span>
+      <span class="c-time">${c.time}</span>
+    </div>
+    <div class="c-loc">📍 ${c.loc}</div>
+    <div class="c-body">${c.text}</div>
+  `;
+  feed.insertBefore(div, feed.firstChild);
+  document.getElementById('feedCount').textContent = `${comments.length} live`;
+}
+
+function sendComment() {
+  const inp = document.getElementById('commentInput');
+  const text = inp.value.trim();
+  if (!text) return;
+  const t = COMMENT_TYPES.find(t=>t.key===selectedCommentType);
+  pushComment({
+    author:'You',time:'just now',
+    loc:selectedDest?selectedDest.name:'Your location',
+    text, type:selectedCommentType, emoji:t.emoji
+  });
+  inp.value='';
+  notify('✅','Report Submitted','Your report is now live for other drivers','#10b981');
+}
+
+function simulateLiveComment() {
+  const bots=[
+    {author:'Sarah L.',loc:'Kensington',text:'Traffic easing on A4 finally. Moving well.',type:'clear',emoji:'✅'},
+    {author:'Tom B.',loc:'Canary Wharf',text:'Police camera van parked on East India Dock Rd',type:'police',emoji:'🚔'},
+    {author:'Aisha M.',loc:'Stratford',text:'Roadworks causing delays near Westfield',type:'construction',emoji:'🚧'},
+    {author:'Dave K.',loc:'Hackney Wick',text:'Minor shunt on the canal bridge, one lane blocked.',type:'incident',emoji:'🚨'},
+    {author:'Mei C.',loc:'Chelsea Bridge',text:'Nice and clear this morning!',type:'normal',emoji:'💬'},
+  ];
+  const c = bots[Math.floor(Math.random()*bots.length)];
+  pushComment({...c, time:'just now'});
+}
+
+// ═══════════════════════════════════════════════════════
+// INCIDENTS
+// ═══════════════════════════════════════════════════════
+function addIncident(type) {
+  const emojis={accident:'🚨',police:'🚔',hazard:'⚠️',construction:'🚧',traffic:'🚗',clear:'✅',camera:'📷',closure:'🚫'};
+  const msgs={
+    accident:['Accident reported!','Collision on the road','Vehicles involved'],
+    police:['Police spotted','Speed check ahead','Officers directing traffic'],
+    hazard:['Hazard on the road','Debris spotted','Slippery surface warning'],
+    construction:['Roadworks active','Lane closure ahead','Construction traffic'],
+    traffic:['Heavy congestion','Traffic building','Slow-moving vehicles'],
+    clear:['All clear!','Road flowing freely','No incidents here'],
+    camera:['Speed camera spotted','Average speed zone','Mobile camera van'],
+    closure:['Road closed','Diversion in place','No through road'],
+  };
+  const locs=['Near you','Junction ahead','Your current road','500m ahead','Next junction'];
+  const msg = msgs[type][Math.floor(Math.random()*msgs[type].length)];
+  const loc = locs[Math.floor(Math.random()*locs.length)];
+
+  // Drop pin near user location
+  const offset = () => (Math.random()-0.5)*0.008;
+  const coords = [currentLatLng[0]+offset(), currentLatLng[1]+offset()];
+  spawnPin(coords, type, emojis[type]);
+
+  // Add comment
+  const t = COMMENT_TYPES.find(t=>t.key===type)||{emoji:emojis[type],key:type};
+  pushComment({author:'You',time:'just now',loc,text:msg,type:type==='accident'?'incident':type,emoji:emojis[type]});
+
+  // Notify
+  const colours={accident:'#ef4444',police:'#22d3ee',hazard:'#f59e0b',construction:'#fbbf24',traffic:'#f97316',clear:'#10b981',camera:'#8b5cf6',closure:'#ef4444'};
+  notify(emojis[type], type.charAt(0).toUpperCase()+type.slice(1)+' Reported', `${msg} · ${loc}`, colours[type]||'#f59e0b');
+
+  // Add to ticker
+  const inner = document.getElementById('tickerInner');
+  inner.innerHTML += `<span class="ticker-item"><span>${emojis[type]}</span> ${type.toUpperCase()}: ${msg} near your location</span>`;
+}
+
+// ═══════════════════════════════════════════════════════
+// NOTIFICATIONS
+// ═══════════════════════════════════════════════════════
+function notify(emoji, title, body, color='#f59e0b') {
+  const c = document.getElementById('notifContainer');
+  const div = document.createElement('div');
+  div.className = 'notif';
+  div.style.borderColor = color;
+  div.style.pointerEvents = 'all';
+  div.innerHTML = `
+    <span class="notif-emoji">${emoji}</span>
+    <div>
+      <div class="notif-title" style="color:${color}">${title}</div>
+      <div class="notif-body">${body}</div>
+    </div>
+    <button class="notif-close" onclick="this.parentElement.remove()">✕</button>
+  `;
+  c.appendChild(div);
+  setTimeout(()=>{ if(div.parentElement) div.style.opacity='0'; setTimeout(()=>div.remove(),400); }, 4000);
+}
+
+// ═══════════════════════════════════════════════════════
+// MAP CONTROLS
+// ═══════════════════════════════════════════════════════
+function mapZoom(d) { map.setZoom(map.getZoom()+d); }
+
+function locateMe() {
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(pos => {
+      currentLatLng = [pos.coords.latitude, pos.coords.longitude];
+      map.flyTo(currentLatLng, 15);
+      userMarker.setLatLng(currentLatLng);
+      notify('📍','Location Updated','GPS position refreshed','#22d3ee');
+    }, () => {
+      map.flyTo(LONDON, 14);
+      notify('📍','Using London Centre','GPS not available — using default','#f59e0b');
+    });
+  } else {
+    map.flyTo(LONDON, 14);
+  }
+}
+
+function toggleMapStyle() {
+  mapStyleDark = !mapStyleDark;
+  const tiles = document.querySelectorAll('.leaflet-tile');
+  tiles.forEach(t => t.style.filter = mapStyleDark
+    ? 'brightness(0.42) saturate(0.5) hue-rotate(180deg) invert(0.05)'
+    : 'brightness(0.75) saturate(0.8)');
+  document.getElementById('styleBtn').textContent = mapStyleDark ? '🌙' : '☀️';
+}
+
+// ═══════════════════════════════════════════════════════
+// PANEL TOGGLES
+// ═══════════════════════════════════════════════════════
+function togglePanel(which) {
+  if (which==='dir') {
+    const p = document.getElementById('leftPanel');
+    const show = p.style.display==='none';
+    p.style.display = show?'flex':'none';
+    document.getElementById('btnDir').classList.toggle('active', show);
+    document.getElementById('mapControls').style.right = show?'340px':'20px';
+    document.getElementById('mapControls2').style.left = show?'360px':'20px';
+    document.querySelector('.hud').style.left = show?'360px':'20px';
+  } else {
+    const p = document.getElementById('rightPanel');
+    const show = p.style.display==='none';
+    p.style.display = show?'flex':'none';
+    document.getElementById('btnFeed').classList.toggle('active', show);
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// HUD UPDATE
+// ═══════════════════════════════════════════════════════
+function updateHUD() {
+  const spds = ['28 MPH','31 MPH','35 MPH','29 MPH','33 MPH'];
+  const trfcs = [{v:'LOW',c:'var(--green)'},{v:'MOD',c:'var(--amber)'},{v:'HIGH',c:'var(--red)'}];
+  const t = trfcs[Math.floor(Math.random()*trfcs.length)];
+  document.getElementById('hudSpeed').textContent = spds[Math.floor(Math.random()*spds.length)];
+  document.getElementById('hudTraffic').textContent = t.v;
+  document.getElementById('hudTraffic').style.color = t.c;
+}
+
+// Apply dark tile filter after map loads
+setTimeout(() => {
+  document.querySelectorAll('.leaflet-tile').forEach(t => {
+    t.style.filter = 'brightness(0.42) saturate(0.5) hue-rotate(180deg) invert(0.05)';
+  });
+  const obs = new MutationObserver(muts => {
+    muts.forEach(m => m.addedNodes.forEach(n => {
+      if (n.classList && n.classList.contains('leaflet-tile')) {
+        n.style.filter = mapStyleDark ? 'brightness(0.42) saturate(0.5) hue-rotate(180deg) invert(0.05)' : 'brightness(0.75) saturate(0.8)';
+      }
+    }));
+  });
+  const tc = document.querySelector('.leaflet-tile-container');
+  if (tc) obs.observe(tc, {childList:true, subtree:true});
+}, 2000);
+</script>
+</body>
+</html>
